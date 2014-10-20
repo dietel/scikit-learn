@@ -18,7 +18,8 @@ from ..externals import six
 LIBSVM_IMPL = ['c_svc', 'nu_svc', 'one_class', 'epsilon_svr', 'nu_svr']
 
 
-def _validate_targets_with_weight(clf, y, sample_weight):
+def _validate_targets_with_weight(clf, y, sample_weight,
+                                  should_compute_class_weight=True):
     y_ = column_or_1d(y, warn=True)
     cls, y = np.unique(y_, return_inverse=True)
 
@@ -34,8 +35,9 @@ def _validate_targets_with_weight(clf, y, sample_weight):
     # This must be called here so that the class weight list doesn't contain
     # weights for classes eliminated because they had no samples with > 0
     # weight.
-    clf.class_weight_ = compute_class_weight(clf.class_weight, cls, y_)
-    clf.classes_ = cls
+    if should_compute_class_weight:
+        clf.class_weight_ = compute_class_weight(clf.class_weight, cls, y_)
+        clf.classes_ = cls
 
     # LibLinear and LibSVM want targets as doubles, even for classification.
     return np.asarray(y, dtype=np.float64, order='C')
@@ -741,7 +743,8 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
         Maximum number of iterations run across all classes.
     """
     X = check_array(X, accept_sparse='csr', dtype=np.float64, order="C")
-    y = _validate_targets_with_weight(None, y, sample_weight)
+    y = _validate_targets_with_weight(None, y, sample_weight,
+                                      should_compute_class_weight=False)
 
     enc = LabelEncoder()
     y_ind = enc.fit_transform(y)
