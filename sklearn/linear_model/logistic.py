@@ -785,6 +785,7 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
     """
 
     log_reg = LogisticRegression(fit_intercept=fit_intercept)
+    log_reg.classes_ = log_reg._enc.classes_
 
     X_train = X[train]
     X_test = X[test]
@@ -1337,6 +1338,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
 
         self._enc = LabelEncoder()
         self._enc.fit(y)
+        self.classes_ = self._enc.classes_
 
         labels = self.classes_ = np.unique(y)
         n_classes = len(labels)

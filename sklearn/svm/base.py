@@ -18,6 +18,29 @@ from ..externals import six
 LIBSVM_IMPL = ['c_svc', 'nu_svc', 'one_class', 'epsilon_svr', 'nu_svr']
 
 
+def _validate_targets_with_weight(clf, y, sample_weight):
+    y_ = column_or_1d(y, warn=True)
+    cls, y = np.unique(y_, return_inverse=True)
+
+    if sample_weight is not None:
+        sw = column_or_1d(sample_weight, warn=True)
+        cls = np.unique(y_[sw > 0])
+
+    if len(cls) < 2:
+        raise ValueError(
+            "The number of classes has to be greater than one; got %d"
+            % len(cls))
+
+    # This must be called here so that the class weight list doesn't contain
+    # weights for classes eliminated because they had no samples with > 0
+    # weight.
+    clf.class_weight_ = compute_class_weight(clf.class_weight, cls, y_)
+    clf.classes_ = cls
+
+    # LibLinear and LibSVM want targets as doubles, even for classification.
+    return np.asarray(y, dtype=np.float64, order='C')
+
+
 def _one_vs_one_coef(dual_coef, n_support, support_vectors):
     """Generate primal coefficients from dual coefficients
     for the one-vs-one multi class LibSVM in the case
@@ -135,7 +158,7 @@ class BaseLibSVM(six.with_metaclass(ABCMeta, BaseEstimator)):
         self._sparse = sparse and not callable(self.kernel)
 
         X = check_array(X, accept_sparse='csr', dtype=np.float64, order='C')
-        y = self._validate_targets(y)
+        y = self._validate_targets(y, sample_weight)
 
         sample_weight = np.asarray([]
                                    if sample_weight is None
@@ -185,7 +208,7 @@ class BaseLibSVM(six.with_metaclass(ABCMeta, BaseEstimator)):
             self.intercept_ *= -1
         return self
 
-    def _validate_targets(self, y):
+    def _validate_targets(self, y, sample_weight=None):
         """Validation of y and class_weight.
 
         Default implementation for SVR and one-class; overridden in BaseSVC.
@@ -432,18 +455,8 @@ class BaseLibSVM(six.with_metaclass(ABCMeta, BaseEstimator)):
 class BaseSVC(BaseLibSVM, ClassifierMixin):
     """ABC for LibSVM-based classifiers."""
 
-    def _validate_targets(self, y):
-        y_ = column_or_1d(y, warn=True)
-        cls, y = np.unique(y_, return_inverse=True)
-        self.class_weight_ = compute_class_weight(self.class_weight, cls, y_)
-        if len(cls) < 2:
-            raise ValueError(
-                "The number of classes has to be greater than one; got %d"
-                % len(cls))
-
-        self.classes_ = cls
-
-        return np.asarray(y, dtype=np.float64, order='C')
+    def _validate_targets(self, y, sample_weight=None):
+        return _validate_targets_with_weight(self, y, sample_weight)
 
     def predict(self, X):
         """Perform classification on samples in X.
@@ -646,6 +659,7 @@ def _get_liblinear_solver_type(multi_class, penalty, loss, dual):
 
 def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
                    penalty, dual, verbose, max_iter, tol,
+                   sample_weight=None,
                    random_state=None, multi_class='ovr', loss='lr'):
     """Used by Logistic Regression (and CV) and LinearSVC.
 
@@ -694,6 +708,10 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
     tol : float
         Stopping condition.
 
+    sample_weight : array-like, shape = [n_samples]
+            Per-sample weights. Rescale C per sample. Higher weights force the
+            classifier to put more emphasis on these points.
+
     random_state : int seed, RandomState instance, or None (default)
         The seed of the pseudo random number generator to use when
         shuffling the data.
@@ -722,15 +740,29 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
     n_iter_ : int
         Maximum number of iterations run across all classes.
     """
+    X = check_array(X, accept_sparse='csr', dtype=np.float64, order="C")
+    y = _validate_targets_with_weight(None, y, sample_weight)
+
     enc = LabelEncoder()
     y_ind = enc.fit_transform(y)
+
     classes_ = enc.classes_
     if len(classes_) < 2:
         raise ValueError("This solver needs samples of at least 2 classes"
                          " in the data, but the data contains only one"
                          " class: %r" % classes_[0])
 
-    class_weight_ = compute_class_weight(class_weight, classes_, y)
+    sample_weight = np.asarray([]
+                               if sample_weight is None
+                               else sample_weight, dtype=np.float64)
+
+    if sample_weight.shape[0] > 0 and sample_weight.shape[0] != X.shape[0]:
+            raise ValueError("sample_weight and X have incompatible shapes: "
+                             "%r vs %r\n"
+                             "Note: Sparse matrices cannot be indexed w/"
+                             "boolean masks (use `indices=True` in CV)."
+                             % (sample_weight.shape, X.shape))
+
     liblinear.set_verbosity_wrap(verbose)
     rnd = check_random_state(random_state)
     if verbose:
@@ -749,7 +781,7 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
     solver_type = _get_liblinear_solver_type(multi_class, penalty, loss, dual)
     raw_coef_, n_iter_  = liblinear.train_wrap(
         X, y_ind, sp.isspmatrix(X), solver_type, tol, bias, C,
-        class_weight_, max_iter, rnd.randint(np.iinfo('i').max)
+        class_weight_, max_iter, sample_weight, rnd.randint(np.iinfo('i').max)
         )
     # Regarding rnd.randint(..) in the above signature:
     # seed for srand in range [0..INT_MAX); due to limitations in Numpy
