@@ -763,6 +763,7 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
                              "boolean masks (use `indices=True` in CV)."
                              % (sample_weight.shape, X.shape))
 
+    class_weight_ = compute_class_weight(class_weight, classes_, y)
     liblinear.set_verbosity_wrap(verbose)
     rnd = check_random_state(random_state)
     if verbose:
