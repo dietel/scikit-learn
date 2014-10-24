@@ -402,7 +402,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                              max_iter=100, tol=1e-4, verbose=0,
                              solver='lbfgs', coef=None, copy=True,
                              class_weight=None, dual=False, penalty='l2',
-                             intercept_scaling=1., multi_class='ovr'):
+                             intercept_scaling=1., multi_class='ovr', sample_weight=None):
     """Compute a Logistic Regression model for a list of regularization
     parameters.
 
@@ -543,7 +543,8 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
     # If class_weights is a dict (provided by the user), the weights
     # are assigned to the original labels. If it is "auto", then
     # the class_weights are assigned after masking the labels with a OvR.
-    sample_weight = np.ones(X.shape[0])
+    if sample_weight is None:
+        sample_weight = np.ones(X.shape[0])
     le = LabelEncoder()
 
     if isinstance(class_weight, dict):
@@ -562,7 +563,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
         else:
             class_weight_ = compute_class_weight(class_weight, classes, y)
             sample_weight = class_weight_[le.fit_transform(y)]
-
+# TODO
     # For doing a ovr, we need to mask the labels first. for the
     # multinomial case this is not necessary.
     if multi_class == 'ovr':
@@ -660,7 +661,8 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                            tol=tol)
         elif solver == 'liblinear':
             coef_, intercept_, _, = _fit_liblinear(
-                X, y, C, fit_intercept, intercept_scaling, class_weight,
+                X, y, C, fit_intercept, intercept_scaling, 
+                class_weight, sample_weight,
                 penalty, dual, verbose, max_iter, tol,
                 )
             if fit_intercept:
@@ -687,7 +689,7 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
                           max_iter=100, tol=1e-4, class_weight=None,
                           verbose=0, solver='lbfgs', penalty='l2',
                           dual=False, copy=True, intercept_scaling=1.,
-                          multi_class='ovr'):
+                          multi_class='ovr', sample_weight=None):
     """Computes scores across logistic_regression_path
 
     Parameters
@@ -785,7 +787,6 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
     """
 
     log_reg = LogisticRegression(fit_intercept=fit_intercept)
-    log_reg.classes_ = log_reg._enc.classes_
 
     X_train = X[train]
     X_test = X[test]
@@ -818,7 +819,8 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
                                          multi_class=multi_class,
                                          tol=tol, verbose=verbose,
                                          dual=dual, penalty=penalty,
-                                         intercept_scaling=intercept_scaling)
+                                         intercept_scaling=intercept_scaling,
+                                         sample_weight=sample_weight)
 
     scores = list()
 
@@ -989,7 +991,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         self.multi_class = multi_class
         self.verbose = verbose
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -1001,15 +1003,20 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         y : array-like, shape (n_samples,)
             Target vector relative to X.
 
+        sample_weight : array-like, shape = [n_samples]
+            Per-sample weights. Rescale C per sample. Higher weights force the
+            classifier to put more emphasis on these points.
+
         Returns
         -------
         self : object
             Returns self.
         """
+
         if self.C < 0:
             raise ValueError("Penalty term must be positive; got (C=%r)"
                              % self.C)
-
+        #todo check sample_weight
         X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64, order="C")
         self.classes_ = np.unique(y)
         if self.solver not in ['liblinear', 'newton-cg', 'lbfgs']:
@@ -1028,7 +1035,8 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         if self.solver == 'liblinear':
             self.coef_, self.intercept_, self.n_iter_ = _fit_liblinear(
                 X, y, self.C, self.fit_intercept, self.intercept_scaling,
-                self.class_weight, self.penalty, self.dual, self.verbose,
+                self.class_weight, sample_weight, 
+                self.penalty, self.dual, self.verbose,
                 self.max_iter, self.tol
                 )
             return self
@@ -1057,7 +1065,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
                 fit_intercept=self.fit_intercept, tol=self.tol,
                 verbose=self.verbose, solver=self.solver,
                 multi_class=self.multi_class, max_iter=self.max_iter,
-                class_weight=self.class_weight)
+                class_weight=self.class_weight, sample_weight=sample_weight)
             self.coef_.append(coef_[0])
 
         self.coef_ = np.squeeze(self.coef_)
@@ -1288,7 +1296,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
         self.intercept_scaling = intercept_scaling
         self.multi_class = multi_class
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -1338,8 +1346,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
 
         self._enc = LabelEncoder()
         self._enc.fit(y)
-        self.classes_ = self._enc.classes_
-
+        
         labels = self.classes_ = np.unique(y)
         n_classes = len(labels)
 

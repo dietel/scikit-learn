@@ -659,9 +659,8 @@ def _get_liblinear_solver_type(multi_class, penalty, loss, dual):
     return _solver_type_dict[solver_type]
 
 
-def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
+def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight, sample_weight,
                    penalty, dual, verbose, max_iter, tol,
-                   sample_weight=None,
                    random_state=None, multi_class='ovr', loss='lr'):
     """Used by Logistic Regression (and CV) and LinearSVC.
 
@@ -695,6 +694,10 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
         then the weights provided are inverses of the frequency in the
         target vector.
 
+    sample_weight : array-like, shape = [n_samples]
+            Per-sample weights. Rescale C per sample. Higher weights force the
+            classifier to put more emphasis on these points.
+
     penalty : str, {'l1', 'l2'}
         The norm of the penalty used in regularization.
 
@@ -709,10 +712,6 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight,
 
     tol : float
         Stopping condition.
-
-    sample_weight : array-like, shape = [n_samples]
-            Per-sample weights. Rescale C per sample. Higher weights force the
-            classifier to put more emphasis on these points.
 
     random_state : int seed, RandomState instance, or None (default)
         The seed of the pseudo random number generator to use when

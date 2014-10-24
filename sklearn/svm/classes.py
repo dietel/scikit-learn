@@ -156,7 +156,7 @@ class LinearSVC(BaseEstimator, LinearClassifierMixin,
         self.random_state = random_state
         self.max_iter = max_iter
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         """Fit the model according to the given training data.
 
         Parameters
@@ -167,6 +167,10 @@ class LinearSVC(BaseEstimator, LinearClassifierMixin,
 
         y : array-like, shape = [n_samples]
             Target vector relative to X
+
+        sample_weight : array-like, shape = [n_samples]
+            Per-sample weights. Rescale C per sample. Higher weights force the
+            classifier to put more emphasis on these points.
 
         Returns
         -------
@@ -181,7 +185,7 @@ class LinearSVC(BaseEstimator, LinearClassifierMixin,
         self.classes_ = np.unique(y)
         self.coef_, self.intercept_, self.n_iter_ = _fit_liblinear(
             X, y, self.C, self.fit_intercept, self.intercept_scaling,
-            self.class_weight, self.penalty, self.dual, self.verbose,
+            self.class_weight, sample_weight, self.penalty, self.dual, self.verbose,
             self.max_iter, self.tol, self.random_state, self.multi_class,
             self.loss
             )
