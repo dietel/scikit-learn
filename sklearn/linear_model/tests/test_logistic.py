@@ -241,23 +241,24 @@ def test_logistic_loss_and_grad():
     X_sp = sp.csr_matrix(X_sp)
     for X in (X_ref, X_sp):
         w = np.zeros(n_features)
-
+        sample_weights = np.ones(X.shape[0])
         # First check that our derivation of the grad is correct
-        loss, grad = _logistic_loss_and_grad(w, X, y, alpha=1.)
+        loss, grad = _logistic_loss_and_grad(w, X, y, alpha=1., sample_weight=sample_weights)
         approx_grad = optimize.approx_fprime(
-            w, lambda w: _logistic_loss_and_grad(w, X, y, alpha=1.)[0], 1e-3
+            w, lambda w: _logistic_loss_and_grad(w, X, y, alpha=1., sample_weight=sample_weights)[0], 1e-3
             )
         assert_array_almost_equal(grad, approx_grad, decimal=2)
 
         # Second check that our intercept implementation is good
         w = np.zeros(n_features + 1)
         loss_interp, grad_interp = _logistic_loss_and_grad(
-            w, X, y, alpha=1.
+            w, X, y, alpha=1., sample_weight=sample_weights
             )
         assert_array_almost_equal(loss, loss_interp)
 
         approx_grad = optimize.approx_fprime(
-            w, lambda w: _logistic_loss_and_grad(w, X, y, alpha=1.)[0], 1e-3
+            w, lambda w: _logistic_loss_and_grad(w, X, y,
+                alpha=1., sample_weight=sample_weights)[0], 1e-3
             )
         assert_array_almost_equal(grad_interp, approx_grad, decimal=2)
 
@@ -274,11 +275,13 @@ def test_logistic_loss_grad_hess():
     X_sp = sp.csr_matrix(X_sp)
     for X in (X_ref, X_sp):
         w = .1 * np.ones(n_features)
-
+        sample_weights = np.ones(X.shape[0])
         # First check that _logistic_loss_grad_hess is consistent
         # with _logistic_loss_and_grad
-        loss, grad = _logistic_loss_and_grad(w, X, y, alpha=1.)
-        loss_2, grad_2, hess = _logistic_loss_grad_hess(w, X, y, alpha=1.)
+        loss, grad = _logistic_loss_and_grad(w, X, y,
+            alpha=1., sample_weight=sample_weights)
+        loss_2, grad_2, hess = _logistic_loss_grad_hess(w, X, y, 
+            alpha=1., sample_weight=sample_weights)
         assert_array_almost_equal(grad, grad_2)
 
         # Now check our hessian along the second direction of the grad
@@ -293,7 +296,8 @@ def test_logistic_loss_grad_hess():
         e = 1e-3
         d_x = np.linspace(-e, e, 30)
         d_grad = np.array([
-            _logistic_loss_and_grad(w + t * vector, X, y, alpha=1.)[1]
+            _logistic_loss_and_grad(w + t * vector, X, y, 
+            alpha=1., sample_weight=sample_weights)[1]
             for t in d_x
             ])
 
@@ -305,10 +309,10 @@ def test_logistic_loss_grad_hess():
         # Second check that our intercept implementation is good
         w = np.zeros(n_features + 1)
         loss_interp, grad_interp = _logistic_loss_and_grad(
-            w, X, y, alpha=1.
+            w, X, y, alpha=1., sample_weight=sample_weights
             )
         loss_interp_2, grad_interp_2, hess = \
-            _logistic_loss_grad_hess(w, X, y, alpha=1.)
+            _logistic_loss_grad_hess(w, X, y, alpha=1., sample_weight=sample_weights)
         assert_array_almost_equal(loss_interp, loss_interp_2)
         assert_array_almost_equal(grad_interp, grad_interp_2)
 
@@ -363,12 +367,13 @@ def test_intercept_logistic_helper():
     alpha = 1.
     w = np.ones(n_features + 1)
     loss_interp, grad_interp, hess_interp = _logistic_loss_grad_hess(
-        w, X, y, alpha)
+        w, X, y, alpha, sample_weight=sample_weights)
 
     # Do not fit intercept. This can be considered equivalent to adding
     # a feature vector of ones, i.e column of one vectors.
     X_ = np.hstack((X, np.ones(10)[:, np.newaxis]))
-    loss, grad, hess = _logistic_loss_grad_hess(w, X_, y, alpha)
+    loss, grad, hess = _logistic_loss_grad_hess(
+        w, X_, y, alpha, sample_weight=sample_weights)
 
     # In the fit_intercept=False case, the feature vector of ones is
     # penalized. This should be taken care of.
