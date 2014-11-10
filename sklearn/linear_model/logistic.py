@@ -24,7 +24,7 @@ from ..utils.extmath import (logsumexp, log_logistic, safe_sparse_dot,
                              squared_norm)
 from ..utils.optimize import newton_cg
 from ..utils.validation import (as_float_array, DataConversionWarning,
-                                check_X_y)
+                                check_X_y, column_or_1d)
 from ..utils.fixes import expit
 from ..externals.joblib import Parallel, delayed
 from ..cross_validation import _check_cv
@@ -58,7 +58,7 @@ def _intercept_dot(w, X, y):
     return w, c, y * z
 
 
-def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
+def _logistic_loss_and_grad(w, X, y, alpha, sample_weight):
     """Computes the logistic loss and gradient.
 
     Parameters
@@ -109,7 +109,7 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
     return out, grad
 
 
-def _logistic_loss(w, X, y, alpha, sample_weight=None):
+def _logistic_loss(w, X, y, alpha, sample_weight):
     """Computes the logistic loss.
 
     Parameters
@@ -128,7 +128,6 @@ def _logistic_loss(w, X, y, alpha, sample_weight=None):
 
     sample_weight : ndarray, shape (n_samples,) optional
         Array of weights that are assigned to individual samples.
-        If not provided, then each sample is given unit weight.
 
     Returns
     -------
@@ -137,15 +136,12 @@ def _logistic_loss(w, X, y, alpha, sample_weight=None):
     """
     w, c, yz = _intercept_dot(w, X, y)
 
-    if sample_weight is None:
-        sample_weight = np.ones(y.shape[0])
-
     # Logistic loss is the negative of the log of the logistic function.
     out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
     return out
 
 
-def _logistic_loss_grad_hess(w, X, y, alpha, sample_weight=None):
+def _logistic_loss_grad_hess(w, X, y, alpha, sample_weight):
     """Computes the logistic loss, gradient and the Hessian.
 
     Parameters
@@ -162,9 +158,8 @@ def _logistic_loss_grad_hess(w, X, y, alpha, sample_weight=None):
     alpha : float
         Regularization parameter. alpha is equal to 1 / C.
 
-    sample_weight : ndarray, shape (n_samples,) optional
+    sample_weight : ndarray, shape (n_samples,)
         Array of weights that are assigned to individual samples.
-        If not provided, then each sample is given unit weight.
 
     Returns
     -------
@@ -183,9 +178,6 @@ def _logistic_loss_grad_hess(w, X, y, alpha, sample_weight=None):
     fit_intercept = grad.shape[0] > n_features
 
     w, c, yz = _intercept_dot(w, X, y)
-
-    if sample_weight is None:
-        sample_weight = np.ones(y.shape[0])
 
     # Logistic loss is the negative of the log of the logistic function.
     out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
@@ -245,7 +237,7 @@ def _multinomial_loss(w, X, Y, alpha, sample_weight):
     alpha : float
         Regularization parameter. alpha is equal to 1 / C.
 
-    sample_weight : ndarray, shape (n_samples,) optional
+    sample_weight : ndarray, shape (n_samples,)
         Array of weights that are assigned to individual samples.
         If not provided, then each sample is given unit weight.
 
@@ -296,7 +288,7 @@ def _multinomial_loss_grad(w, X, Y, alpha, sample_weight):
     alpha : float
         Regularization parameter. alpha is equal to 1 / C.
 
-    sample_weight : ndarray, shape (n_samples,) optional
+    sample_weight : ndarray, shape (n_samples,)
         Array of weights that are assigned to individual samples.
 
     Returns
@@ -401,8 +393,9 @@ def _multinomial_loss_grad_hess(w, X, Y, alpha, sample_weight):
 def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                              max_iter=100, tol=1e-4, verbose=0,
                              solver='lbfgs', coef=None, copy=True,
-                             class_weight=None, dual=False, penalty='l2',
-                             intercept_scaling=1., multi_class='ovr', sample_weight=None):
+                             class_weight=None, sample_weight=None,
+                             dual=False, penalty='l2',
+                             intercept_scaling=1., multi_class='ovr'):
     """Compute a Logistic Regression model for a list of regularization
     parameters.
 
@@ -461,6 +454,10 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
         weights. If not given, all classes are supposed to have weight one.
         The 'auto' mode selects weights inversely proportional to class
         frequencies in the training set.
+    
+    sample_weight : ndarray, shape (n_samples,) optional
+        Array of weights that are assigned to individual samples.
+        If not provided, then each sample is given unit weight.
 
     dual : bool
         Dual or primal formulation. Dual formulation is only implemented for
@@ -530,8 +527,15 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
     # Preprocessing.
     X = check_array(X, accept_sparse='csr', dtype=np.float64)
     y = check_array(y, ensure_2d=False, copy=copy)
+    check_consistent_length(X, y, sample_weight)
     _, n_features = X.shape
-    check_consistent_length(X, y)
+    
+    if sample_weight is None:
+        sample_weight = np.ones(X.shape[0])
+    else:
+        sample_weight = check_array(sample_weight, ensure_2d=False, copy=copy)
+        check_consistent_length(X, sample_weight)
+    
     classes = np.unique(y)
 
     if pos_class is None and multi_class != 'multinomial':
@@ -543,8 +547,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
     # If class_weights is a dict (provided by the user), the weights
     # are assigned to the original labels. If it is "auto", then
     # the class_weights are assigned after masking the labels with a OvR.
-    if sample_weight is None:
-        sample_weight = np.ones(X.shape[0])
+    
     le = LabelEncoder()
 
     if isinstance(class_weight, dict):
@@ -562,7 +565,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                                  "class_weight='auto'")
         else:
             class_weight_ = compute_class_weight(class_weight, classes, y)
-            sample_weight = class_weight_[le.fit_transform(y)]
+            sample_weight *= class_weight_[le.fit_transform(y)]
 # TODO
     # For doing a ovr, we need to mask the labels first. for the
     # multinomial case this is not necessary.
@@ -587,7 +590,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
 
     if class_weight == "auto":
         class_weight_ = compute_class_weight(class_weight, mask_classes, y)
-        sample_weight = class_weight_[le.fit_transform(y)]
+        sample_weight *= class_weight_[le.fit_transform(y)]
 
     if coef is not None:
         # it must work both giving the bias term and not
@@ -686,10 +689,11 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
 # helper function for LogisticCV
 def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
                           scoring=None, fit_intercept=False,
-                          max_iter=100, tol=1e-4, class_weight=None,
+                          max_iter=100, tol=1e-4,
+                          class_weight=None, sample_weight=None,
                           verbose=0, solver='lbfgs', penalty='l2',
                           dual=False, copy=True, intercept_scaling=1.,
-                          multi_class='ovr', sample_weight=None):
+                          multi_class='ovr'):
     """Computes scores across logistic_regression_path
 
     Parameters
@@ -736,6 +740,10 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
         weights. If not given, all classes are supposed to have weight one.
         The 'auto' mode selects weights inversely proportional to class
         frequencies in the training set.
+        
+    sample_weight : ndarray, shape (n_samples,) optional
+        Array of weights that are assigned to individual samples.
+        If not provided, then each sample is given unit weight.
 
     verbose : int
         For the liblinear and lbfgs solvers set verbose to any positive
@@ -815,12 +823,12 @@ def _log_reg_scoring_path(X, y, train, test, pos_class=None, Cs=10,
                                          solver=solver,
                                          max_iter=max_iter,
                                          class_weight=class_weight,
+                                         sample_weight=sample_weight,
                                          copy=copy, pos_class=pos_class,
                                          multi_class=multi_class,
                                          tol=tol, verbose=verbose,
                                          dual=dual, penalty=penalty,
-                                         intercept_scaling=intercept_scaling,
-                                         sample_weight=sample_weight)
+                                         intercept_scaling=intercept_scaling)
 
     scores = list()
 
@@ -1003,7 +1011,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         y : array-like, shape (n_samples,)
             Target vector relative to X.
 
-        sample_weight : array-like, shape = [n_samples]
+        sample_weight : array-like, shape = [n_samples], optional
             Per-sample weights. Rescale C per sample. Higher weights force the
             classifier to put more emphasis on these points.
 
@@ -1018,6 +1026,16 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
                              % self.C)
         #todo check sample_weight
         X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64, order="C")
+        if sample_weight is not None:
+            sample_weight = column_or_1d(sample_weight, warn=True)
+            check_consistent_length(X, sample_weight)
+            _assert_all_finite(sample_weight)
+            if (sample_weight<0).any():
+                raise ValueError(
+                    "sample_weight should be non negative"
+                    )    
+
+        check_consistent_length(X, y)
         self.classes_ = np.unique(y)
         if self.solver not in ['liblinear', 'newton-cg', 'lbfgs']:
             raise ValueError(
@@ -1307,7 +1325,11 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
 
         y : array-like, shape (n_samples,)
             Target vector relative to X.
-
+        
+        sample_weight : ndarray, shape (n_samples,) optional
+            Array of weights that are assigned to individual samples.
+            If not provided, then each sample is given unit weight.
+        
         Returns
         -------
         self : object
@@ -1339,6 +1361,14 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
             y = np.ravel(y)
 
         check_consistent_length(X, y)
+        if sample_weight is not None:
+            sample_weight = column_or_1d(sample_weight, warn=True)
+            check_consistent_length(X, sample_weight)
+            _assert_all_finite(sample_weight)
+            if (sample_weight<0).any():
+                raise ValueError(
+                    "sample_weight should be non negative"
+                    )    
 
         # init cross-validation generator
         cv = _check_cv(self.cv, X, y, classifier=True)
@@ -1442,6 +1472,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
                     fit_intercept=self.fit_intercept, coef=coef_init,
                     max_iter=self.max_iter, tol=self.tol,
                     class_weight=self.class_weight,
+                    sample_weight=sample_weight,
                     multi_class=self.multi_class,
                     verbose=max(0, self.verbose - 1))
                 w = w[0]
