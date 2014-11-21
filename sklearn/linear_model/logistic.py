@@ -1363,7 +1363,6 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
         if sample_weight is not None:
             sample_weight = column_or_1d(sample_weight, warn=True)
             check_consistent_length(X, sample_weight)
-            _assert_all_finite(sample_weight)
             if (sample_weight<0).any():
                 raise ValueError(
                     "sample_weight should be non negative"

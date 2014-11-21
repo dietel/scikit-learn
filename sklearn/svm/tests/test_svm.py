@@ -352,17 +352,6 @@ def test_sample_weights():
         clf.fit(X_sw, Y_sw, sample_weight=sample_weight)
         assert_array_equal(clf.predict(X_sw[-1]), [1.])
 
-        # Test that the length of clf.classes_ is correct if all examples of a
-        # certain class have 0 weight.
-        X_tmp = np.array([[0,0], [1,1], [2,2]])
-        Y_tmp = np.array([1, 2, 3])
-        sample_weight = np.array([1, 1, 0])
-
-        clf.fit(X_tmp, Y_tmp, sample_weight)
-
-        expected_num_classes = len(np.unique(Y_tmp[sample_weight > 0]))
-        assert_array_equal(len(clf.classes_), expected_num_classes)
-
     # test that rescaling all samples is the same as changing C
     clf = svm.SVC()
     clf.fit(X_sw, Y_sw)

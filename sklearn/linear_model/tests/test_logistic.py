@@ -362,7 +362,8 @@ def test_intercept_logistic_helper():
     n_samples, n_features = 10, 5
     X, y = make_classification(n_samples=n_samples, n_features=n_features,
                                random_state=0)
-
+    sample_weights = np.ones(X.shape[0])
+    
     # Fit intercept case.
     alpha = 1.
     w = np.ones(n_features + 1)
