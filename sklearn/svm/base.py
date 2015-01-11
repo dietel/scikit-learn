@@ -687,7 +687,7 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight, samp
         In order to avoid this, one should increase the intercept_scaling.
         such that the feature vector becomes [x, intercept_scaling].
 
-    class_weight : {dict, 'auto'}, optional
+    class_weight : array
         Weight assigned to each class. If class_weight provided is 'auto',
         then the weights provided are inverses of the frequency in the
         target vector.
@@ -739,8 +739,6 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight, samp
     n_iter_ : int
         Maximum number of iterations run across all classes.
     """
-    X = check_array(X, accept_sparse='csr', dtype=np.float64, order="C")
-    y = _validate_targets_with_weight(None, y, sample_weight)
 
     enc = LabelEncoder()
     y_ind = enc.fit_transform(y)
@@ -780,7 +778,7 @@ def _fit_liblinear(X, y, C, fit_intercept, intercept_scaling, class_weight, samp
     solver_type = _get_liblinear_solver_type(multi_class, penalty, loss, dual)
     raw_coef_, n_iter_  = liblinear.train_wrap(
         X, y_ind, sp.isspmatrix(X), solver_type, tol, bias, C,
-        class_weight_, max_iter, sample_weight, rnd.randint(np.iinfo('i').max)
+        class_weight, max_iter, sample_weight, rnd.randint(np.iinfo('i').max)
         )
     # Regarding rnd.randint(..) in the above signature:
     # seed for srand in range [0..INT_MAX); due to limitations in Numpy

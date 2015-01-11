@@ -4,7 +4,7 @@ from .base import _fit_liblinear, BaseSVC, BaseLibSVM
 from ..base import BaseEstimator, RegressorMixin
 from ..linear_model.base import LinearClassifierMixin, SparseCoefMixin
 from ..feature_selection.from_model import _LearntSelectorMixin
-from ..utils import check_array, check_X_y
+from ..utils import check_array, check_X_y, compute_class_weight
 
 
 class LinearSVC(BaseEstimator, LinearClassifierMixin,
@@ -182,10 +182,11 @@ class LinearSVC(BaseEstimator, LinearClassifierMixin,
                              % self.C)
 
         X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64, order="C")
-        self.classes_ = np.unique(y)
+        self.classes_=np.unique(y)
+        self.class_weight_ = compute_class_weight(self.class_weight, self.classes_, y)
         self.coef_, self.intercept_, self.n_iter_ = _fit_liblinear(
             X, y, self.C, self.fit_intercept, self.intercept_scaling,
-            self.class_weight, sample_weight, self.penalty, self.dual, self.verbose,
+            self.class_weight_, sample_weight, self.penalty, self.dual, self.verbose,
             self.max_iter, self.tol, self.random_state, self.multi_class,
             self.loss
             )

@@ -18,7 +18,7 @@ from scipy import optimize, sparse
 from .base import LinearClassifierMixin, SparseCoefMixin, BaseEstimator
 from ..feature_selection.from_model import _LearntSelectorMixin
 from ..preprocessing import LabelEncoder, LabelBinarizer
-from ..svm.base import _fit_liblinear
+from ..svm.base import _fit_liblinear, _validate_targets_with_weight
 from ..utils import check_array, check_consistent_length, compute_class_weight
 from ..utils.extmath import (logsumexp, log_logistic, safe_sparse_dot,
                              squared_norm)
@@ -527,7 +527,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
     # Preprocessing.
     X = check_array(X, accept_sparse='csr', dtype=np.float64)
     y = check_array(y, ensure_2d=False, copy=copy)
-    check_consistent_length(X, y, sample_weight)
+    check_consistent_length(X, y)
     _, n_features = X.shape
     
     if sample_weight is None:
@@ -549,7 +549,9 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
     # the class_weights are assigned after masking the labels with a OvR.
     
     le = LabelEncoder()
-
+    if class_weight is None:
+        class_weight_ = compute_class_weight(class_weight, classes, y)
+        
     if isinstance(class_weight, dict):
         if solver == "liblinear":
             if classes.size == 2:
@@ -563,6 +565,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                                  "class_weight of type dict. Use the lbfgs, "
                                  "newton-cg solvers or set "
                                  "class_weight='auto'")
+            class_weight_ = compute_class_weight(class_weight, classes, y)
         else:
             class_weight_ = compute_class_weight(class_weight, classes, y)
             sample_weight *= class_weight_[le.fit_transform(y)]
@@ -654,7 +657,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                     func, w0, fprime=None,
                     args=(X, target, 1. / C, sample_weight),
                     iprint=(verbose > 0) - 1, pgtol=tol
-                    )
+                        )
             if info["warnflag"] == 1 and verbose > 0:
                 warnings.warn("lbfgs failed to converge. Increase the number "
                               "of iterations.")
@@ -665,7 +668,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
         elif solver == 'liblinear':
             coef_, intercept_, _, = _fit_liblinear(
                 X, y, C, fit_intercept, intercept_scaling, 
-                class_weight, sample_weight,
+                class_weight_, sample_weight,
                 penalty, dual, verbose, max_iter, tol,
                 )
             if fit_intercept:
@@ -1024,19 +1027,23 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         if self.C < 0:
             raise ValueError("Penalty term must be positive; got (C=%r)"
                              % self.C)
-        #todo check sample_weight
+        #todo check sample_weight, check X_y
         X, y = check_X_y(X, y, accept_sparse='csr', dtype=np.float64, order="C")
+        check_consistent_length(X, y)
         if sample_weight is not None:
             sample_weight = column_or_1d(sample_weight, warn=True)
             check_consistent_length(X, sample_weight)
-            _assert_all_finite(sample_weight)
             if (sample_weight<0).any():
                 raise ValueError(
                     "sample_weight should be non negative"
-                    )    
-
-        check_consistent_length(X, y)
-        self.classes_ = np.unique(y)
+                    )
+        if self.solver == 'liblinear':
+            # liblinear will remove classes with sample weight 0 
+            # so fix classes_ and class_weight_ too
+            # so that consistent and eg predict proba works
+            y=_validate_targets_with_weight(self, y, sample_weight)
+        else:
+            self.classes_ = np.unique(y)
         if self.solver not in ['liblinear', 'newton-cg', 'lbfgs']:
             raise ValueError(
                 "Logistic Regression supports only liblinear, newton-cg and "
@@ -1053,7 +1060,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
         if self.solver == 'liblinear':
             self.coef_, self.intercept_, self.n_iter_ = _fit_liblinear(
                 X, y, self.C, self.fit_intercept, self.intercept_scaling,
-                self.class_weight, sample_weight, 
+                self.class_weight_, sample_weight, 
                 self.penalty, self.dual, self.verbose,
                 self.max_iter, self.tol
                 )
@@ -1376,8 +1383,14 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
 
         self._enc = LabelEncoder()
         self._enc.fit(y)
-        
-        labels = self.classes_ = np.unique(y)
+        if self.solver == 'liblinear':
+            # liblinear will remove classes with sample weight 0 
+            # so fix classes_ and class_weight_ too
+            # so that consistent and eg predict proba works
+            _validate_targets_with_weight(self, y, sample_weight)
+        else:
+            self.classes_ = np.unique(y)
+        labels = self.classes_
         n_classes = len(labels)
 
         if n_classes < 2:

@@ -366,6 +366,7 @@ def test_intercept_logistic_helper():
     # Fit intercept case.
     alpha = 1.
     w = np.ones(n_features + 1)
+    sample_weights = np.ones(X.shape[0])
     loss_interp, grad_interp, hess_interp = _logistic_loss_grad_hess(
         w, X, y, alpha, sample_weight=sample_weights)
 
